@@ -1,0 +1,143 @@
+diff --git a/client.c b/client.c
+index a505158..d34815a 100644
+--- a/client.c
++++ b/client.c
+@@ -99,7 +99,7 @@ Client_DrawBorder(Client *c, int active) {
+ 		return;
+ 
+ 	XSetWindowBackground(dpy, c->parent,
+-		active ? c->screen->black : c->screen->gray);
++		active ? c->screen->colour : c->screen->gray);
+ 	XClearWindow(dpy, c->parent);
+ 
+ 	/* Draw the ``box''. */
+diff --git a/lwm.c b/lwm.c
+index a25349c..6065c22 100644
+--- a/lwm.c
++++ b/lwm.c
+@@ -411,14 +411,15 @@ initScreen(int screen) {
+ 	screens[screen].strut.top = 0;
+ 	screens[screen].strut.bottom = 0;
+ 	
+-	/* Get the pixel values of the only two colours we use. */
+-	screens[screen].black = BlackPixel(dpy, screen);
++	/* Get the pixel values of the only three colours we use. */
++	XAllocNamedColor(dpy, DefaultColormap(dpy, screen), colour_name, &colour, &exact);
++	screens[screen].colour = colour.pixel;
+ 	screens[screen].white = WhitePixel(dpy, screen);
+ 	XAllocNamedColor(dpy, DefaultColormap(dpy, screen), "DimGray", &colour, &exact);
+ 	screens[screen].gray = colour.pixel;
+ 	
+ 	/* Set up root (frame) GC's. */
+-	gv.foreground = screens[screen].black ^ screens[screen].white;
++	gv.foreground = screens[screen].colour ^ screens[screen].white;
+ 	gv.background = screens[screen].white;
+ 	gv.function = GXxor;
+ 	gv.line_width = 1;
+@@ -434,7 +435,7 @@ initScreen(int screen) {
+ 	
+ 	/* Create a window for our popup. */
+ 	screens[screen].popup = XCreateSimpleWindow(dpy, screens[screen].root,
+-		0, 0, 1, 1, 1, screens[screen].black, screens[screen].white);
++		0, 0, 1, 1, 1, screens[screen].colour, screens[screen].white);
+ 	attr.event_mask = ButtonMask | ButtonMotionMask | ExposureMask;
+ 	XChangeWindowAttributes(dpy, screens[screen].popup, CWEventMask, &attr);
+ 	
+@@ -445,7 +446,7 @@ initScreen(int screen) {
+ 		GCLineWidth | GCSubwindowMode, &gv);
+ 	
+ 	/* Create size indicator GC. */
+-	gv.foreground = screens[screen].black;
++	gv.foreground = screens[screen].colour;
+ 	gv.function = GXcopy;
+ 	screens[screen].size_gc = XCreateGC(dpy, screens[screen].popup,
+ 		GCForeground | GCBackground | GCFunction |
+diff --git a/lwm.h b/lwm.h
+index df8b369..ea07cda 100644
+--- a/lwm.h
++++ b/lwm.h
+@@ -23,6 +23,7 @@
+ #define DEFAULT_POPUP_FONT "-*-lucida-medium-r-normal-sans-12-*-*-*-p-*-iso10646-1"
+ #define DEFAULT_TERMINAL "xterm"
+ #define DEFAULT_BORDER 6
++#define DEFAULT_COLOUR "Black"
+ 
+ #define HIDE_BUTTON Button3
+ #define MOVE_BUTTON Button2
+@@ -143,8 +144,8 @@ struct ScreenInfo {
+ 	GC menu_gc;	/* The GC for the popup window (menu). */
+ 	GC size_gc;	/* The GC for the popup window (sizing). */
+ 	
+-	unsigned long black;		/* Black pixel value. */
+-	unsigned long white;	/* White pixel value. */
++	unsigned long colour;		/* Colour pixel value. */
++	unsigned long white;		/* White pixel value. */
+ 	unsigned long gray;		/* Gray pixel value. */
+ 	
+ 	Cursor root_cursor;
+@@ -328,6 +329,7 @@ extern char *btn1_command;
+ extern char *btn2_command;
+ extern int border;
+ extern FocusMode focus_mode;
++extern char *colour_name;
+ extern char * sdup(char *);
+ extern void parseResources(void);
+ 
+diff --git a/lwm.man b/lwm.man
+index 23f0600..ac71deb 100644
+--- a/lwm.man
++++ b/lwm.man
+@@ -88,6 +88,9 @@ program spawned when button 2 is clicked on the root window
+ .B focus
+ focus mode, one of "enter" for enter-to-focus (or sloppy focus), or
+ "click" for click-to-focus
++.TP 12
++.B color|colour
++border color to use for active windows
+ .SH "SEE ALSO"
+ .PP
+ X(7)
+diff --git a/manage.c b/manage.c
+index 3b77f63..2fb360a 100644
+--- a/manage.c
++++ b/manage.c
+@@ -267,7 +267,7 @@ manage(Client * c, int mapped)
+ 		c->parent = XCreateSimpleWindow(dpy, c->screen->root,
+ 			c->size.x, c->size.y - titleHeight(),
+ 			c->size.width, c->size.height + titleHeight(),
+-			1, c->screen->black, c->screen->white);
++			1, c->screen->colour, c->screen->white);
+ 
+ 		attr.event_mask = ExposureMask | EnterWindowMask | ButtonMask |
+ 			SubstructureRedirectMask | SubstructureNotifyMask |
+diff --git a/resource.c b/resource.c
+index 529610c..49cd825 100644
+--- a/resource.c
++++ b/resource.c
+@@ -39,6 +39,7 @@ char	*btn1_command;		/* User's choice of button 1 command. */
+ char	*btn2_command;		/* User's choice of button 2 command. */
+ int	border;			/* User's choice of border size. */
+ FocusMode focus_mode;		/* User's choice of focus mode (default enter) */
++char	*colour_name;		/* User's choice of border colour. */
+ 
+ char *
+ sdup(char *p) {
+@@ -64,6 +65,7 @@ parseResources(void) {
+ 	btn1_command = 0;
+ 	btn2_command = DEFAULT_TERMINAL;
+ 	focus_mode = focus_enter;
++	colour_name = DEFAULT_COLOUR;
+ 
+ 	resource_manager = XResourceManagerString(dpy);
+ 	if (resource_manager == 0)
+@@ -101,4 +103,10 @@ parseResources(void) {
+ 		if (strcmp(value.addr, "enter") == 0) focus_mode = focus_enter;
+ 		if (strcmp(value.addr, "click") == 0) focus_mode = focus_click;
+ 	}
++
++	/* Border colour. */
++	if (XrmGetResource(db, "lwm.color", "Color", &type, &value) == True ||
++	    XrmGetResource(db, "lwm.colour", "Color", &type, &value) == True)
++		if (strcmp(type, "String") == 0)
++			colour_name = sdup((char *) value.addr);
+ }
